@@ -1,0 +1,134 @@
+!$variables$
+! This variable will be modified by python
+Filename = $apdl_pre_file$ ! file with mesh and boundary conditions
+Filepath = $file_directory$ ! path to the file with mesh and boundary conditions
+NumHid = $number_of_harmonics$ ! number of harmonic index to compute
+Nmodes = $number_of_modes$ ! number of modes to compute per Harmonic index
+rotSpeed = $rotational_speed$
+
+!$static_prep$
+! reading a initial db case create by workbench
+/INPUT,Filename,'dat',,, 0 
+
+!$static_solu$
+/com,****************************************************************************
+/com,*************************    SOLUTION       ********************************
+/com,****************************************************************************
+/solu
+antype,0                   ! static analysis
+eqsl,sparse,,,,,1
+cntr,print,1               ! print out contact info and also make no initial contact an error
+dmpoption,emat,no             ! Don't combine emat file for DANSYS
+dmpoption,esav,no             ! Don't combine esav file for DANSYS
+nldiag,cont,iter           ! print out contact info each equilibrium iteration
+RESCONTROL,LINEAR                 ! keep  files for prestressed modal analysis
+/com,****************************************************
+/com,******************* SOLVE FOR LS 1 OF 1 ****************
+/com,****************************************************
+/nopr
+/gopr
+nsub,1,1,1
+time,1.
+outres,erase
+outres,all,none
+outres,nsol,all
+outres,rsol,all
+outres,strs,all
+outres,epel,all
+outres,eppl,all
+
+omega,0,0,rotSpeed 
+solve
+
+!$static_post$
+!****************************************************
+! writting displacement for static analysis
+!****************************************************
+/post1
+allsel 
+*get,NumNd,node,,count ! total node number 
+*dim,NodalInfo,,Numnd,7 
+set,last
+!*del,MODALFREQ 
+!*get,MODALFREQ,ACTIVE,,i,FREQ 
+*vget,NodalInfo(1,1),node,,nlist 
+*vget,NodalInfo(1,2),node,,loc,x 
+*vget,NodalInfo(1,3),node,,loc,y 
+*vget,NodalInfo(1,4),node,,loc,z 
+*vget,NodalInfo(1,5),node,,u,x 
+*vget,NodalInfo(1,6),node,,u,y 
+*vget,NodalInfo(1,7),node,,u,z 
+*cfopen,displacement,txt 
+*vwrite 
+('Node Num X Y Z UX UY UZ') 
+*vwrite,NodalInfo(1,1),NodalInfo(1,2),NodalInfo(1,3),NodalInfo(1,4),NodalInfo(1,5),NodalInfo(1,6),NodalInfo(1,7) 
+(f8.0,f11.5,f11.5,f11.5,f11.5,f11.5,f11.5) 
+*cfclose 
+
+
+!$modal_prep$
+!-----------------------------------------------------------
+!  Prestressed modal analysis
+!-----------------------------------------------------------
+/prep7
+/assign,rstp,file,rst  
+
+!$modal_solu$
+/solu
+antype,,restart,,,perturbation
+perturb,modal,,CURRENT,DZEROKEEP          ! pre-stress modal analysis, only keep zero bcs in case future MSUP
+solve, elform                                       ! Generate matrices needed for perturbation analysis
+modopt,lanb,Nmodes
+outres,erase
+outres,all,none
+outres,nsol,all
+mxpand  
+
+! defining harmonic index to calculate
+CYCOPT,HINDEX,0,NumHid,1
+solve
+fini
+
+
+
+!-----------------------------------------------------------
+!  Write modes to txt file 
+!-----------------------------------------------------------
+!$modal_post$
+/post1
+
+allsel 
+*get,NumNd,node,,count ! total node number 
+NumHid1 = NumHid + 1 
+*dim,freq_mode,,Nmodes,NumHid1
+
+*do,j,1,NumHid1
+*do,i,1,Nmodes
+*get,NumNd,node,,count !total node number 
+*dim,NodalInfo,,Numnd,7 
+set,j,i 
+*get,freq_mode(i,j),active,0,set,freq 
+*vget,NodalInfo(1,1),node,,nlist 
+*vget,NodalInfo(1,2),node,,loc,x 
+*vget,NodalInfo(1,3),node,,loc,y 
+*vget,NodalInfo(1,4),node,,loc,z 
+*vget,NodalInfo(1,5),node,,u,x 
+*vget,NodalInfo(1,6),node,,u,y 
+*vget,NodalInfo(1,7),node,,u,z 
+! writing modes shapes per harmonic
+*cfopen,Harm_%j%_mode%i%,txt 
+*vwrite 
+('Node Num X Y Z UX UY UZ') 
+*vwrite,NodalInfo(1,1),NodalInfo(1,2),NodalInfo(1,3),NodalInfo(1,4),NodalInfo(1,5),NodalInfo(1,6),NodalInfo(1,7) 
+(f8.0,f11.5,f11.5,f11.5, E15.5, E15.5, E15.5) 
+*cfclose 
+*enddo 
+! writting frequencies per harmonic
+*cfopen,Frequency_harm_%j%,txt 
+*vwrite 
+('Frequency') 
+*vwrite,freq_mode(1,j)
+(f14.5) 
+*cfclose 
+*enddo
+
